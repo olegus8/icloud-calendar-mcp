@@ -6,6 +6,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.*
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
 import kotlinx.io.asSource
@@ -110,16 +111,13 @@ fun main(args: Array<String>) {
         inputStream = System.`in`.asSource().buffered(),
         outputStream = System.out.asSink().buffered()
     )
-    val session = server.createSession(transport)
-
-    // Keep the process alive until the transport closes
-    session.onClose {
-        // Session closed, process will exit
+    // Before createSession starts the reader, or an early EOF goes unseen.
+    val closed = CompletableDeferred<Unit>()
+    transport.onClose {
+        closed.complete(Unit)
     }
-
-    // Block until stdin is closed (transport handles read loop internally)
-    // The coroutine scope keeps the process alive while the session is active
-    kotlinx.coroutines.awaitCancellation()
+    server.createSession(transport)
+    closed.await()
     }
 }
 

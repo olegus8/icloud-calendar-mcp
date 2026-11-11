@@ -111,7 +111,7 @@ tasks.jar {
 }
 
 // Create fat JAR for distribution
-tasks.register<Jar>("fatJar") {
+val fatJar = tasks.register<Jar>("fatJar") {
     archiveClassifier.set("all")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
@@ -130,4 +130,11 @@ tasks.register<Jar>("fatJar") {
             .filter { it.name.endsWith("jar") }
             .map { zipTree(it) }
     })
+}
+
+tasks.test {
+    dependsOn(fatJar)
+    systemProperty(
+        "calendar.jar", fatJar.get().archiveFile.get().asFile.absolutePath
+    )
 }
