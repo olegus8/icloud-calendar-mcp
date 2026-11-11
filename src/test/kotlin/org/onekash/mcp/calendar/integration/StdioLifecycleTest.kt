@@ -17,20 +17,7 @@ class StdioLifecycleTest {
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     fun `packaged server serves requests until stdin closes then exits`() {
-        val javaBin = File(
-            File(System.getProperty("java.home"), "bin"), "java"
-        ).absolutePath
-        val builder = ProcessBuilder(
-            javaBin, "-jar", System.getProperty("calendar.jar")
-        ).redirectError(ProcessBuilder.Redirect.DISCARD)
-        builder.environment().apply {
-            remove("ICLOUD_USERNAME")
-            remove("ICLOUD_PASSWORD")
-            remove("ICLOUD_APP_PASSWORD")
-        }
-        val process = builder.start()
-
-        try {
+        withServer { process ->
             val input = process.outputStream.bufferedWriter()
             val output = process.inputStream.bufferedReader()
 
@@ -74,6 +61,37 @@ class StdioLifecycleTest {
                 "server did not exit after stdin closed"
             )
             assertEquals(0, process.exitValue())
+        }
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    fun `packaged server exits when stdin closes before any request`() {
+        withServer { process ->
+            process.outputStream.close()
+            assertTrue(
+                process.waitFor(15, TimeUnit.SECONDS),
+                "server did not exit after stdin closed"
+            )
+            assertEquals(0, process.exitValue())
+        }
+    }
+
+    private fun withServer(block: (Process) -> Unit) {
+        val javaBin = File(
+            File(System.getProperty("java.home"), "bin"), "java"
+        ).absolutePath
+        val builder = ProcessBuilder(
+            javaBin, "-jar", System.getProperty("calendar.jar")
+        ).redirectError(ProcessBuilder.Redirect.DISCARD)
+        builder.environment().apply {
+            remove("ICLOUD_USERNAME")
+            remove("ICLOUD_PASSWORD")
+            remove("ICLOUD_APP_PASSWORD")
+        }
+        val process = builder.start()
+        try {
+            block(process)
         } finally {
             if (process.isAlive) {
                 process.destroyForcibly()

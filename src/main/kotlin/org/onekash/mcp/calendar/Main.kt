@@ -111,12 +111,12 @@ fun main(args: Array<String>) {
         inputStream = System.`in`.asSource().buffered(),
         outputStream = System.out.asSink().buffered()
     )
-    val session = server.createSession(transport)
-
+    // Before createSession starts the reader, or an early EOF goes unseen.
     val closed = CompletableDeferred<Unit>()
-    session.onClose {
+    transport.onClose {
         closed.complete(Unit)
     }
+    server.createSession(transport)
     closed.await()
     }
 }
