@@ -35,19 +35,43 @@ internal class CalDavBackoff(
     private var cooldownUntil: Instant? = null
     private var consecutiveFailures = 0
 
+    private class ResponseState(var retryAfter: String? = null)
+
+    // Route 503 retries and Retry-After parsing through the shared gate.
+    val networkInterceptor = Interceptor { chain ->
+        val response = chain.proceed(chain.request())
+        if (response.code == 503) {
+            chain.request().tag(ResponseState::class.java)?.retryAfter = response.header("Retry-After")
+            response.newBuilder().removeHeader("Retry-After").build()
+        } else response
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         awaitAdmission()
+        val state = ResponseState()
         val response = try {
-            chain.proceed(chain.request())
+            val received = chain.proceed(chain.request().newBuilder().tag(ResponseState::class.java, state).build())
+            try {
+                // Buffer successful responses up to the body limit before resetting the breaker.
+                if (received.isSuccessful && received.body.contentLength() <= OkHttpCalDavClient.MAX_BODY_SIZE) {
+                    received.body.source().request(OkHttpCalDavClient.MAX_BODY_SIZE + 1)
+                }
+            } catch (e: IOException) {
+                received.close()
+                throw e
+            }
+            state.retryAfter?.let { received.newBuilder().header("Retry-After", it).build() } ?: received
         } catch (e: IOException) {
             failed(e)
             throw TransportFailure(e)
         }
-        observed(response)
-        return response
+        val window = observed(response)
+        return if (window == null) response else response.newBuilder()
+            .request(response.request.newBuilder().tag(Window::class.java, window).build())
+            .build()
     }
 
-    private fun awaitAdmission() {
+    fun awaitAdmission() {
         while (true) {
             val window = window() ?: return
             val remaining = Duration.between(clock.instant(), window.retryAt)
@@ -79,7 +103,7 @@ internal class CalDavBackoff(
     }
 
     @Synchronized
-    private fun observed(response: Response) {
+    private fun observed(response: Response): Window? {
         val retryAt = retryAfter(response)
         when {
             retryAt != null -> {
@@ -94,6 +118,7 @@ internal class CalDavBackoff(
                 cooldownUntil = null
             }
         }
+        return window() ?: retryAt?.let { Window(appleUntil!!, true) }
     }
 
     @Synchronized
