@@ -46,13 +46,16 @@ class StdioLifecycleTest {
                 }.get(5, TimeUnit.SECONDS)
                 assertNotNull(line, "server closed stdout before replying")
                 val message = Json.parseToJsonElement(line).jsonObject
-                assertEquals("2.0", message["jsonrpc"]?.jsonPrimitive?.content)
+                assertEquals(
+                    "2.0", message["jsonrpc"]?.jsonPrimitive?.content
+                )
                 assertEquals("$id", message["id"]?.jsonPrimitive?.content)
                 assertNotNull(message["result"], line)
             }
 
             send(
-                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{""" +
+                """{"jsonrpc":"2.0","id":1,"method":"initialize",""" +
+                    """"params":{""" +
                     """"protocolVersion":"2025-06-18","capabilities":{},""" +
                     """"clientInfo":{"name":"stdio-lifecycle-test",""" +
                     """"version":"1.0.0"}}}"""
