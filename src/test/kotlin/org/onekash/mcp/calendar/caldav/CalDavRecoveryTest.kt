@@ -466,6 +466,21 @@ class CalDavRecoveryTest {
     }
 
     @Test
+    fun `a call timeout counts its failed request once`() {
+        MockWebServer().use { server ->
+            val clock = CalDavTestClock()
+            repeat(5) { server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)) }
+            val http = OkHttpClient.Builder().callTimeout(100, TimeUnit.MILLISECONDS).build()
+            client(server, clock, http).use { client ->
+                repeat(2) { assertNull(assertIs<CalDavResult.Error>(client.checkConnection()).retryAt) }
+                assertEquals(4, server.requestCount)
+                error(client.checkConnection(), 503, clock.instant().plusSeconds(30))
+                assertEquals(5, server.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun `zero Retry-After does not allow hidden HTTP retries`() {
         MockWebServer().use { server ->
             val clock = CalDavTestClock()

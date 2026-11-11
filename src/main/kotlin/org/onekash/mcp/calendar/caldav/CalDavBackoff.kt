@@ -122,7 +122,7 @@ internal class CalDavBackoff(
     }
 
     @Synchronized
-    fun failed(error: IOException) {
+    private fun failed(error: IOException) {
         if (error !is SSLException) transientFailure()
     }
 
@@ -144,7 +144,7 @@ internal class CalDavBackoff(
         if (response.code != 429 && response.code != 503) return null
         val header = response.header("Retry-After")?.trim() ?: return null
         val now = clock.instant()
-        val deadline = if (header.matches(Regex("[0-9]+"))) {
+        val deadline = if (header.isNotEmpty() && header.all { it in '0'..'9' }) {
             val seconds = header.toLongOrNull() ?: 86_400L
             now.plusSeconds(seconds.coerceAtMost(86_400))
         } else {

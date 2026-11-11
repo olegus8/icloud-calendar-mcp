@@ -256,8 +256,7 @@ class OkHttpCalDavClient(
         for (homeSet in homeSets) {
             val calendarsResult = fetchCalendars(homeSet)
             if (calendarsResult is CalDavResult.Error &&
-                (calendarsResult.code == 0 || calendarsResult.code == 429 || calendarsResult.isServerError ||
-                    calendarsResult.isAuthError || calendarsResult.isRetryable)) {
+                (calendarsResult.isRetryable || calendarsResult.isAuthError || calendarsResult.code == 0)) {
                 return calendarsResult
             }
             if (calendarsResult is CalDavResult.Success) {
@@ -752,7 +751,6 @@ class OkHttpCalDavClient(
             return if (mutation) notApplied(error) else error
         }
         val cause = if (exception is CalDavBackoff.TransportFailure) exception.failure else exception
-        if (exception !is CalDavBackoff.TransportFailure && cause is IOException) backoff.failed(cause)
         val error = when (cause) {
             is SSLException -> CalDavResult.Error.sslError("SSL error: ${cause.message}")
             is SocketTimeoutException -> CalDavResult.Error.timeoutError("Request timed out: ${cause.message}")
@@ -793,9 +791,6 @@ class OkHttpCalDavClient(
         }
         error("Retry loop must return a result")
     }
-
-    internal fun parseRetryAfter(response: Response): Long =
-        backoff.retryAfter(response)?.let { Duration.between(clock.instant(), it).toMillis() } ?: 0L
 
     private fun okhttp3.Headers.toMap(): Map<String, String> {
         val map = mutableMapOf<String, String>()
